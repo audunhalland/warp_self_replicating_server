@@ -28,11 +28,11 @@ fn list_servers(
 ) -> impl warp::Reply {
     let server_map = database.lock().unwrap();
 
-    let keys: Vec<ServerJsonBody> = server_map.keys()
+    let json_array: Vec<ServerJsonBody> = server_map.keys()
         .map(|key| ServerJsonBody { port: *key })
         .collect();
 
-    warp::reply::json(&keys)
+    warp::reply::json(&json_array)
 }
 
 /// Create a new server described by ServerJsonBody
