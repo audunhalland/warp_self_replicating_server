@@ -63,10 +63,9 @@ fn delete_server(
     }
 }
 
-fn create_warp_server(
-    database: Database,
-    port: u16
-) -> (impl futures::future::Future<Item = (), Error = ()>, RunningServer) {
+fn server_warp_filter(
+    database: Database
+) -> warp::filters::BoxedFilter<(impl warp::reply::Reply,)> {
     let db_state = warp::any().map(move || database.clone());
 
     // `GET /` - list mock servers
@@ -88,11 +87,16 @@ fn create_warp_server(
         .and(path!(u16))
         .and_then(delete_server);
 
-    let api = get.or(post).or(delete);
+    get.or(post).or(delete).boxed()
+}
 
+fn create_warp_server(
+    database: Database,
+    port: u16
+) -> (impl futures::future::Future<Item = (), Error = ()>, RunningServer) {
     let (tx, rx) = futures::sync::oneshot::channel();
 
-    let (_, future) = warp::serve(api)
+    let (_, future) = warp::serve(server_warp_filter(database))
         .bind_with_graceful_shutdown(([127, 0, 0, 1], port), rx);
 
     (future, RunningServer{ shutdown: tx })
