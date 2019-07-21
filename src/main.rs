@@ -7,29 +7,35 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::clone::Clone;
 
+/// JSON representation of a server instance
 #[derive(Debug, serde_derive::Deserialize, serde_derive::Serialize)]
 struct ServerJsonBody {
     port: u16,
 }
 
+/// In memory representation of a running server.
 struct RunningServer {
+    // Signal for shutting down the server
     shutdown: futures::sync::oneshot::Sender<()>
 }
 
+/// The application state / "Database". Each running server is keyed by its listening port.
 type Database = Arc<Mutex<HashMap<u16, RunningServer>>>;
 
+/// List all running servers
 fn list_servers(
     database: Database
 ) -> impl warp::Reply {
     let server_map = database.lock().unwrap();
 
-    let keys: Vec<String> = server_map.keys()
-        .map(|key| key.to_string())
+    let keys: Vec<ServerJsonBody> = server_map.keys()
+        .map(|key| ServerJsonBody { port: *key })
         .collect();
 
     warp::reply::json(&keys)
 }
 
+/// Create a new server described by ServerJsonBody
 fn post_new_server(
     database: Database,
     body: ServerJsonBody
@@ -40,7 +46,7 @@ fn post_new_server(
         return Err(warp::reject::not_found());
     }
 
-    let (future, server) = create_warp_server(database.clone(), body.port);
+    let (server, future) = create_warp_server(database.clone(), body.port);
 
     server_map.insert(body.port, server);
 
@@ -48,6 +54,7 @@ fn post_new_server(
     Ok(warp::reply::json(&body))
 }
 
+/// Kill a server by port
 fn delete_server(
     database: Database,
     port: u16
@@ -63,7 +70,8 @@ fn delete_server(
     }
 }
 
-fn server_warp_filter(
+/// Create a warp filter representing the app's HTTP routes and handlers
+fn app_filter(
     database: Database
 ) -> warp::filters::BoxedFilter<(impl warp::reply::Reply,)> {
     let db_arg = warp::any().map(move || database.clone());
@@ -90,25 +98,26 @@ fn server_warp_filter(
     get.or(post).or(delete).boxed()
 }
 
+// Create an instance of HTTP server
 fn create_warp_server(
     database: Database,
     port: u16
-) -> (impl futures::future::Future<Item = (), Error = ()>, RunningServer) {
+) -> (RunningServer, impl futures::future::Future<Item = (), Error = ()>) {
     let (tx, rx) = futures::sync::oneshot::channel();
 
-    let (_, future) = warp::serve(server_warp_filter(database))
+    let (_, future) = warp::serve(app_filter(database))
         .bind_with_graceful_shutdown(([127, 0, 0, 1], port), rx);
 
-    (future, RunningServer{ shutdown: tx })
+    (RunningServer{ shutdown: tx }, future)
 }
 
 fn main() {
     let port = 8080;
-    let db = Arc::new(Mutex::new(HashMap::new()));
-    let (future, server) = create_warp_server(db.clone(), port);
+    let database = Arc::new(Mutex::new(HashMap::new()));
+    let (server, future) = create_warp_server(database.clone(), port);
 
     {
-        let mut server_map = db.lock().unwrap();
+        let mut server_map = database.lock().unwrap();
         server_map.insert(port, server);
     }
 

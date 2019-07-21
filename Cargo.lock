@@ -1090,7 +1090,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "warp_test"
+name = "warp_self_replicating_server"
 version = "0.1.0"
 dependencies = [
  "futures 0.1.28 (registry+https://github.com/rust-lang/crates.io-index)",
