@@ -66,24 +66,24 @@ fn delete_server(
 fn server_warp_filter(
     database: Database
 ) -> warp::filters::BoxedFilter<(impl warp::reply::Reply,)> {
-    let db_state = warp::any().map(move || database.clone());
+    let db_arg = warp::any().map(move || database.clone());
 
     // `GET /` - list mock servers
-    let get = warp::get2()
+    let get = db_arg.clone()
+        .and(warp::get2())
         .and(warp::path::end())
-        .and(db_state.clone())
         .map(list_servers);
 
     // `POST /` - start mock server
-    let post = warp::post2()
+    let post = db_arg.clone()
+        .and(warp::post2())
         .and(warp::path::end())
-        .and(db_state.clone())
         .and(warp::body::json())
         .and_then(post_new_server);
 
     // 'DELETE /{port}' - delete mock server
-    let delete = warp::delete2()
-        .and(db_state)
+    let delete = db_arg.clone()
+        .and(warp::delete2())
         .and(path!(u16))
         .and_then(delete_server);
 
